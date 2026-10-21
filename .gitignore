@@ -1,0 +1,17 @@
+# Binaries
+browser-cli
+hukum
+*.exe
+*.bin
+
+# Environment
+.env
+*.env.local
+*.env.*.local
+
+# Logs and debug
+*.log
+
+# Test & build artifacts
+*.test
+.cache/
