@@ -69,6 +69,23 @@ var (
 	CounterBadgeStyle = lipgloss.NewStyle().
 				Foreground(TextMuted)
 
+	// Modal Dialog Styles
+	ModalBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(AccentBlue).
+			Background(BgGutter).
+			Padding(0, 1)
+
+	ModalTitleStyle = lipgloss.NewStyle().
+			Foreground(TextWhite).
+			Bold(true)
+
+	ModalDividerStyle = lipgloss.NewStyle().
+				Foreground(BgSelection)
+
+	ModalFooterStyle = lipgloss.NewStyle().
+				Foreground(TextMuted)
+
 	// List & Results Styles
 	SelectedRowStyle = lipgloss.NewStyle().
 				Background(BgSelection).

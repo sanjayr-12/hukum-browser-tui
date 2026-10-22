@@ -154,10 +154,7 @@ func (m BrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.modal.Type != ModalNone {
 			switch msg.String() {
 			case "esc":
-				if m.currentURL != "" {
-					m.modal.Close()
-					return m, nil
-				}
+				m.modal.Close()
 				return m, nil
 
 			case "ctrl+c":
@@ -326,15 +323,7 @@ func (m *BrowserModel) renderMarkdown() {
 	m.renderedMD = out
 }
 
-func (m BrowserModel) View() string {
-	if !m.ready {
-		return "\n  Initializing..."
-	}
-
-	if m.modal.Type != ModalNone {
-		return m.modal.RenderFullPage(m.width, m.height)
-	}
-
+func (m BrowserModel) renderBaseView() string {
 	headerTag := HeaderTagStyle.Render("BROWSER")
 	headerTitle := m.pageTitle
 	if headerTitle == "" {
@@ -372,6 +361,29 @@ func (m BrowserModel) View() string {
 			lipgloss.Center,
 			SpinnerStyle.Render(spinText),
 		)
+	} else if m.currentURL == "" && m.renderedMD == "" {
+		welcomeText := "# Hukum Browser\n\nA lightweight terminal browser powered by TinyFish API.\n\n* Press `Ctrl+O` or `/` to search the web or enter a URL\n* Press `f` to view and open links on the current page\n* Press `b` to go back in browsing history\n* Press `q` to quit\n"
+		wrapW := m.width - 4
+		if wrapW < 40 {
+			wrapW = 40
+		}
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithStyles(OneDarkStyleConfig),
+			glamour.WithWordWrap(wrapW),
+		)
+		var rendered string
+		if err == nil {
+			rendered, _ = renderer.Render(welcomeText)
+		} else {
+			rendered = welcomeText
+		}
+		contentArea = lipgloss.Place(
+			m.width,
+			m.viewport.Height,
+			lipgloss.Left,
+			lipgloss.Top,
+			rendered,
+		)
 	} else {
 		contentArea = m.viewport.View()
 	}
@@ -395,6 +407,19 @@ func (m BrowserModel) View() string {
 	statusBar := StatusBarStyle.Width(m.width).Render(statusLeft + strings.Repeat(" ", statusSpacing) + statusRight)
 
 	return lipgloss.JoinVertical(lipgloss.Left, headerBar, contentArea, statusBar)
+}
+
+func (m BrowserModel) View() string {
+	if !m.ready {
+		return "\n  Initializing..."
+	}
+
+	baseView := m.renderBaseView()
+	if m.modal.Type != ModalNone {
+		dialog := m.modal.RenderDialog(m.width, m.height)
+		return OverlayCenter(baseView, dialog, m.width, m.height)
+	}
+	return baseView
 }
 
 func IsURL(input string) bool {

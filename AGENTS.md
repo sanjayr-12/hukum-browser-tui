@@ -61,12 +61,13 @@ hukum/
    - Only add comments when explaining non-obvious business logic, workarounds, or protocol quirks.
 
 6. **UI & Styling Consistency**:
-   - Use a full-page terminal layout spanning 100% width and height (never shrink or center dialogs with empty margins).
+   - The primary web viewer uses a full-page terminal layout spanning 100% width and height.
+   - Interactive dialogs (search input prompt, search results list, and link pickers) open as centered floating modal dialogs overlaid on top of the current page, keeping whatever was on screen visible in the background like a web dialog.
    - Theme: Authentic Atom One Dark palette:
-     - Background: `#282C34` (canvas), `#21252B` (header/status bars), `#2C313A` (search container)
+     - Background: `#282C34` (canvas), `#21252B` (header, status bar, and modal background), `#2C313A` (search container)
      - Selection Highlight: `#3E4451`
      - Foreground/Text: `#ECEFF4` (bright/headings), `#ABB2BF` (body), `#5C6370` (muted/metadata)
-     - Accents: `#61AFEF` (blue/links), `#56B6C2` (cyan), `#98C379` (green), `#C678DD` (purple badge), `#E06C75` (error red)
+     - Accents: `#61AFEF` (blue/links/modal border), `#56B6C2` (cyan), `#98C379` (green), `#C678DD` (purple badge), `#E06C75` (error red)
    - Markdown rendering must wrap to terminal width and re-render on terminal resize events (`tea.WindowSizeMsg`).
 
 7. **Git Restrictions**:

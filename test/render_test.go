@@ -160,7 +160,25 @@ hide
 	}
 }
 
-func TestFullPageSearchResultsRendering(t *testing.T) {
+func TestCenteredSearchPromptDialog(t *testing.T) {
+	modal := ui.NewModal()
+	modal.OpenSearch()
+
+	if !modal.IsInputOnly() {
+		t.Fatalf("expected IsInputOnly to be true for fresh search modal")
+	}
+
+	output := modal.RenderDialog(80, 20)
+	if len(output) == 0 {
+		t.Fatalf("expected non-empty rendered output")
+	}
+
+	if !strings.Contains(output, "Search or URL") {
+		t.Errorf("output missing modal title")
+	}
+}
+
+func TestSearchResultsDialog(t *testing.T) {
 	modal := ui.NewModal()
 	modal.OpenSearch()
 	modal.SetSearchResults([]tinyfish.SearchResultItem{
@@ -176,7 +194,11 @@ func TestFullPageSearchResultsRendering(t *testing.T) {
 		},
 	})
 
-	output := modal.RenderFullPage(100, 24)
+	if modal.IsInputOnly() {
+		t.Fatalf("expected IsInputOnly to be false after results loaded")
+	}
+
+	output := modal.RenderDialog(100, 24)
 	if len(output) == 0 {
 		t.Fatalf("expected non-empty rendered output")
 	}
@@ -186,5 +208,22 @@ func TestFullPageSearchResultsRendering(t *testing.T) {
 	}
 	if !strings.Contains(output, "https://reactnative.dev/") {
 		t.Errorf("output does not contain result URL")
+	}
+}
+
+func TestOverlayCenter(t *testing.T) {
+	bg := strings.Repeat("background background background\n", 10)
+	fg := "┌────────┐\n│ dialog │\n└────────┘"
+
+	combined := ui.OverlayCenter(bg, fg, 40, 10)
+	if len(combined) == 0 {
+		t.Fatalf("expected non-empty combined output")
+	}
+
+	if !strings.Contains(combined, "dialog") {
+		t.Errorf("expected combined output to contain dialog text")
+	}
+	if !strings.Contains(combined, "background") {
+		t.Errorf("expected background to remain visible around dialog")
 	}
 }

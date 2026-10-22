@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"hukum/internal/tinyfish"
 )
 
@@ -36,7 +37,7 @@ type ModalModel struct {
 
 func NewModal() ModalModel {
 	ti := textinput.New()
-	ti.Prompt = "Search / URL: "
+	ti.Prompt = "> "
 	ti.PromptStyle = SearchPromptStyle
 	ti.TextStyle = NormalRowStyle
 	ti.Focus()
@@ -50,8 +51,8 @@ func NewModal() ModalModel {
 func (m *ModalModel) OpenSearch() {
 	m.Type = ModalSearch
 	m.Input.Reset()
-	m.Input.Prompt = "Search or URL: "
-	m.Input.Placeholder = "Enter query (e.g. latest tech news) or URL (e.g. news.ycombinator.com)..."
+	m.Input.Prompt = "> "
+	m.Input.Placeholder = "Search query or URL (e.g. news.ycombinator.com)..."
 	m.Input.Focus()
 	m.Items = nil
 	m.Filtered = nil
@@ -64,8 +65,8 @@ func (m *ModalModel) OpenSearch() {
 func (m *ModalModel) OpenLinks(links []PageLink) {
 	m.Type = ModalLinks
 	m.Input.Reset()
-	m.Input.Prompt = "Filter Links: "
-	m.Input.Placeholder = "Type keywords to filter page links..."
+	m.Input.Prompt = "> "
+	m.Input.Placeholder = "Filter page links..."
 	m.Input.Focus()
 
 	items := make([]ModalItem, 0, len(links))
@@ -147,13 +148,105 @@ func (m *ModalModel) SelectedItem() *ModalItem {
 	return nil
 }
 
-// RenderFullPage renders the search or link picker spanning the full terminal width and height
-func (m *ModalModel) RenderFullPage(width, height int) string {
+// IsInputOnly returns true when the search modal should show just the small
+// centered prompt (no results loaded yet, not currently searching).
+func (m *ModalModel) IsInputOnly() bool {
+	return m.Type == ModalSearch && len(m.Items) == 0 && !m.IsSearching && m.SearchErr == ""
+}
+
+// RenderDialog renders the modal as a floating dialog box.
+func (m *ModalModel) RenderDialog(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
 
-	// 1. Search / Input Bar (Full Width)
+	if m.IsInputOnly() {
+		return m.renderInputPrompt(width)
+	}
+	return m.renderResultsDialog(width, height)
+}
+
+func (m *ModalModel) renderInputPrompt(screenWidth int) string {
+	promptWidth := int(float64(screenWidth) * 0.55)
+	if promptWidth < 40 {
+		promptWidth = screenWidth - 4
+	}
+	if promptWidth > 72 {
+		promptWidth = 72
+	}
+
+	boxWidth := promptWidth - 2
+	innerWidth := boxWidth - 2
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+
+	titleBar := m.renderTitleBar(" Search or URL ", innerWidth)
+
+	m.Input.Width = innerWidth - lipgloss.Width(m.Input.Prompt) - 1
+	if m.Input.Width < 15 {
+		m.Input.Width = 15
+	}
+	inputRow := m.Input.View()
+	inputW := ansi.StringWidth(inputRow)
+	if inputW < innerWidth {
+		inputRow += strings.Repeat(" ", innerWidth-inputW)
+	}
+
+	divider := ModalDividerStyle.Render(strings.Repeat("─", innerWidth))
+	footerHints := ModalFooterStyle.Render("Enter Search  Esc Cancel")
+	footerW := ansi.StringWidth(footerHints)
+	if footerW < innerWidth {
+		footerHints += strings.Repeat(" ", innerWidth-footerW)
+	}
+
+	modalContent := lipgloss.JoinVertical(
+		lipgloss.Left,
+		titleBar,
+		inputRow,
+		divider,
+		footerHints,
+	)
+
+	return ModalBoxStyle.Width(boxWidth).Render(modalContent)
+}
+
+func (m *ModalModel) renderResultsDialog(screenWidth, screenHeight int) string {
+	modalWidth := int(float64(screenWidth) * 0.80)
+	if modalWidth < 60 {
+		modalWidth = screenWidth - 4
+	}
+	if modalWidth > 110 {
+		modalWidth = 110
+	}
+
+	modalHeight := int(float64(screenHeight) * 0.70)
+	if modalHeight < 14 {
+		modalHeight = screenHeight - 2
+	}
+	if modalHeight > 30 {
+		modalHeight = 30
+	}
+
+	boxWidth := modalWidth - 2
+	boxHeight := modalHeight - 2
+	innerWidth := boxWidth - 2
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+
+	var titleText string
+	if m.Type == ModalSearch {
+		if m.IsSearching {
+			titleText = " Searching... "
+		} else {
+			titleText = " Search Results "
+		}
+	} else {
+		titleText = " Page Links "
+	}
+	titleBar := m.renderTitleBar(titleText, innerWidth)
+
 	counterText := ""
 	if len(m.Filtered) > 0 {
 		counterText = fmt.Sprintf("[%d / %d]", m.Cursor+1, len(m.Filtered))
@@ -162,57 +255,45 @@ func (m *ModalModel) RenderFullPage(width, height int) string {
 	}
 	counterBadge := CounterBadgeStyle.Render(counterText)
 
-	inputWidth := width - lipgloss.Width(counterBadge) - lipgloss.Width(m.Input.Prompt) - 4
-	if inputWidth < 20 {
-		inputWidth = 20
+	inputWidth := innerWidth - lipgloss.Width(counterBadge) - lipgloss.Width(m.Input.Prompt) - 2
+	if inputWidth < 15 {
+		inputWidth = 15
 	}
 	m.Input.Width = inputWidth
 
-	inputRowContent := m.Input.View()
-	spacing := width - lipgloss.Width(inputRowContent) - lipgloss.Width(counterBadge) - 2
-	if spacing < 1 {
-		spacing = 1
+	inputContent := m.Input.View()
+	promptSpacing := innerWidth - ansi.StringWidth(inputContent) - ansi.StringWidth(counterBadge)
+	if promptSpacing < 1 {
+		promptSpacing = 1
 	}
-	searchBarLine := SearchContainerStyle.Width(width).Render(
-		inputRowContent + strings.Repeat(" ", spacing) + counterBadge,
-	)
+	inputRow := inputContent + strings.Repeat(" ", promptSpacing) + counterBadge
 
-	// Separator line
-	dividerLine := DividerStyle.Render(strings.Repeat("─", width))
+	divider := ModalDividerStyle.Render(strings.Repeat("─", innerWidth))
 
-	// Available height for results list
-	// 1 line for search bar, 1 line for divider, 1 line for bottom status bar
-	listHeight := height - 3
-	if listHeight < 4 {
-		listHeight = 4
+	listHeight := boxHeight - 5
+	if listHeight < 3 {
+		listHeight = 3
 	}
 
 	var lines []string
-
 	if m.IsSearching {
 		lines = append(lines, "")
 		lines = append(lines, "  "+SpinnerStyle.Render("Searching TinyFish web index..."))
 	} else if m.SearchErr != "" {
 		lines = append(lines, "")
-		lines = append(lines, "  "+ErrorStyle.Render("Search Error: "+m.SearchErr))
+		lines = append(lines, "  "+ErrorStyle.Render("Error: "+m.SearchErr))
 	} else if len(m.Filtered) == 0 {
 		lines = append(lines, "")
 		if m.Type == ModalSearch {
-			if strings.TrimSpace(m.Input.Value()) == "" {
-				lines = append(lines, "  "+TextMutedStyle.Render("Type a search query or a website URL (e.g. news.ycombinator.com), then press Enter."))
-			} else {
-				lines = append(lines, "  "+TextMutedStyle.Render("Press Enter to search TinyFish or navigate to URL."))
-			}
+			lines = append(lines, "  "+TextMutedStyle.Render("No results found. Edit your query and press Enter."))
 		} else {
-			lines = append(lines, "  "+TextMutedStyle.Render("No matching links found on this page."))
+			lines = append(lines, "  "+TextMutedStyle.Render("No matching links."))
 		}
 	} else {
-		// Calculate lines per item: 3 lines for search results, 2 lines for links
 		linesPerItem := 3
 		if m.Type == ModalLinks {
 			linesPerItem = 2
 		}
-
 		itemsPerPage := listHeight / linesPerItem
 		if itemsPerPage < 1 {
 			itemsPerPage = 1
@@ -227,6 +308,7 @@ func (m *ModalModel) RenderFullPage(width, height int) string {
 			endIdx = len(m.Filtered)
 		}
 
+		maxLen := innerWidth - 6
 		for i := startIdx; i < endIdx; i++ {
 			item := m.Filtered[i]
 			isSel := i == m.Cursor
@@ -235,18 +317,15 @@ func (m *ModalModel) RenderFullPage(width, height int) string {
 			if titleStr == "" {
 				titleStr = item.URL
 			}
-			maxLen := width - 6
 			if maxLen > 0 && len(titleStr) > maxLen {
 				titleStr = titleStr[:maxLen-3] + "..."
 			}
 
-			var titleLine string
 			if isSel {
-				titleLine = SelectedRowStyle.Width(width).Render(" > " + titleStr)
+				lines = append(lines, SelectedRowStyle.Width(innerWidth).Render(" > "+titleStr))
 			} else {
-				titleLine = NormalRowStyle.Render("   " + titleStr)
+				lines = append(lines, NormalRowStyle.Render("   "+titleStr))
 			}
-			lines = append(lines, titleLine)
 
 			urlStr := item.URL
 			if maxLen > 0 && len(urlStr) > maxLen {
@@ -276,23 +355,106 @@ func (m *ModalModel) RenderFullPage(width, height int) string {
 	}
 	contentArea := strings.Join(lines, "\n")
 
-	// Bottom Status Bar
-	statusBar := StatusBarStyle.Width(width).Render(lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		StatusKeyStyle.Render(" Enter "), StatusValStyle.Render("Open/Search  "),
-		StatusKeyStyle.Render("Ctrl+N/P "), StatusValStyle.Render("Navigate  "),
-		StatusKeyStyle.Render("Tab "), StatusValStyle.Render("Next  "),
-		StatusKeyStyle.Render("Esc "), StatusValStyle.Render("Back to page  "),
-		StatusKeyStyle.Render("Ctrl+C "), StatusValStyle.Render("Quit"),
-	))
+	footerHints := ModalFooterStyle.Render("Enter Open  Ctrl+N/P Navigate  Tab Next  Esc Close")
+	footerW := ansi.StringWidth(footerHints)
+	if footerW < innerWidth {
+		footerHints += strings.Repeat(" ", innerWidth-footerW)
+	}
 
-	return lipgloss.JoinVertical(
+	modalContent := lipgloss.JoinVertical(
 		lipgloss.Left,
-		searchBarLine,
-		dividerLine,
+		titleBar,
+		inputRow,
+		divider,
 		contentArea,
-		statusBar,
+		divider,
+		footerHints,
 	)
+
+	return ModalBoxStyle.Width(boxWidth).Height(boxHeight).Render(modalContent)
+}
+
+func (m *ModalModel) renderTitleBar(title string, innerWidth int) string {
+	titleStyled := ModalTitleStyle.Render(title)
+	dashesCount := innerWidth - lipgloss.Width(titleStyled) - 2
+	if dashesCount < 0 {
+		dashesCount = 0
+	}
+	return ModalDividerStyle.Render("──") + titleStyled + ModalDividerStyle.Render(strings.Repeat("─", dashesCount))
+}
+
+// OverlayCenter places the overlay string centered on top of the background
+// string, replacing only the area covered by the overlay. The surrounding
+// background content remains visible.
+func OverlayCenter(bg, fg string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return bg
+	}
+
+	bgLines := strings.Split(bg, "\n")
+	fgLines := strings.Split(fg, "\n")
+
+	for len(bgLines) < height {
+		bgLines = append(bgLines, strings.Repeat(" ", width))
+	}
+	if len(bgLines) > height {
+		bgLines = bgLines[:height]
+	}
+
+	fgHeight := len(fgLines)
+	fgWidth := 0
+	for _, line := range fgLines {
+		if w := ansi.StringWidth(line); w > fgWidth {
+			fgWidth = w
+		}
+	}
+
+	startY := (height - fgHeight) / 2
+	startX := (width - fgWidth) / 2
+	if startY < 0 {
+		startY = 0
+	}
+	if startX < 0 {
+		startX = 0
+	}
+
+	for i, fgLine := range fgLines {
+		y := startY + i
+		if y >= len(bgLines) {
+			break
+		}
+
+		bgLine := bgLines[y]
+		bgVisualWidth := ansi.StringWidth(bgLine)
+		if bgVisualWidth < width {
+			bgLine = bgLine + strings.Repeat(" ", width-bgVisualWidth)
+		}
+
+		left := ansi.Cut(bgLine, 0, startX)
+		leftWidth := ansi.StringWidth(left)
+		if leftWidth < startX {
+			left += strings.Repeat(" ", startX-leftWidth)
+		}
+
+		fgLineWidth := ansi.StringWidth(fgLine)
+		if fgLineWidth < fgWidth {
+			fgLine += strings.Repeat(" ", fgWidth-fgLineWidth)
+		}
+
+		rightStart := startX + fgWidth
+		var right string
+		if rightStart < width {
+			right = ansi.Cut(bgLine, rightStart, width)
+			rightWidth := ansi.StringWidth(right)
+			if rightWidth < width-rightStart {
+				right += strings.Repeat(" ", (width-rightStart)-rightWidth)
+			}
+		}
+
+		bgLines[y] = left + fgLine + right
+	}
+
+	return strings.Join(bgLines, "\n")
 }
 
 func max(a, b int) int {
