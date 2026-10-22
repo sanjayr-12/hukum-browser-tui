@@ -308,7 +308,7 @@ func (m *BrowserModel) renderMarkdown() {
 	}
 
 	renderer, err := glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dark"),
+		glamour.WithStyles(OneDarkStyleConfig),
 		glamour.WithWordWrap(wrapWidth),
 	)
 	if err != nil {
@@ -316,7 +316,8 @@ func (m *BrowserModel) renderMarkdown() {
 		return
 	}
 
-	out, err := renderer.Render(m.rawMarkdown)
+	cleaned := NormalizeMarkdown(m.rawMarkdown)
+	out, err := renderer.Render(cleaned)
 	if err != nil {
 		m.renderedMD = m.rawMarkdown
 		return
